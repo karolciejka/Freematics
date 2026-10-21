@@ -41,6 +41,11 @@ BLE & App
 
 A BLE SPP server is implemented in [FreematicsPlus](https://github.com/stanleyhuangyc/Freematics/blob/master/libraries/FreematicsPlus) library. To enable BLE support, change ENABLE_BLE to 1 [config.h](config.h). This will enable remote control and data monitoring via [Freematics Controller App](https://freematics.com/software/freematics-controller/).
 
+Commands are written as text to characteristic 0xFFE1 of service 0xABF0 and answered with a notification on 0xFFE2, terminated by `\r`. Besides the commands handled in `processBLE()`, two commands give apps direct OBD-II access (both answer `N/A` while OBD is not ready):
+
+* `PIDS<pid><pid>...` (e.g. `PIDS0C0D05`) reads each mode 01 PID and answers with the hex data bytes of each reply, comma separated and empty for unsupported PIDs (e.g. `0C34,00,7B`).
+* `RAW<request>` (e.g. `RAW0101`, `RAW03`, `RAW04`, `RAW020C00`) sends an OBD-II request (hex digits only, no AT commands) and answers with the reply with spaces removed and lines joined by `;`.
+
 Prerequisites
 -------------
 

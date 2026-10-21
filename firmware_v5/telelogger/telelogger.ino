@@ -135,7 +135,7 @@ protected:
 #if ENABLE_MEMS
     processMEMS(0);
 #endif
-    processBLE(0);
+    // BLE commands are not processed here as PIDS/RAW issue OBD requests of their own
   }
 };
 
@@ -1200,6 +1200,37 @@ void loadConfig()
 #endif
 }
 
+#if ENABLE_BLE
+// send a raw OBD-II request (hex digits only) and copy the reply with spaces and prompt stripped, lines joined by ';'
+int obdRawRequest(const char* req, char* out, int outsize, unsigned int timeout)
+{
+  char buf[128];
+  int n = 0;
+  for (const char* p = req; *p; p++) {
+    if (!isxdigit(*p) || n >= 16) return -1;
+    buf[n++] = toupper(*p);
+  }
+  if (n < 2) return -1;
+  buf[n++] = '\r';
+  buf[n] = 0;
+  obd.link->send(buf);
+  int len = obd.link->receive(buf, sizeof(buf), timeout);
+  n = 0;
+  for (int i = 0; i < len && buf[i] && n < outsize - 1; i++) {
+    char c = buf[i];
+    if (c == ' ' || c == '>' || c == '\n') continue;
+    if (c == '\r') {
+      if (n > 0 && out[n - 1] != ';') out[n++] = ';';
+      continue;
+    }
+    out[n++] = c;
+  }
+  if (n > 0 && out[n - 1] == ';') n--;
+  out[n] = 0;
+  return n;
+}
+#endif
+
 void processBLE(int timeout)
 {
 #if ENABLE_BLE
@@ -1211,7 +1242,7 @@ void processBLE(int timeout)
 
   char *p = strchr(cmd, '\r');
   if (p) *p = 0;
-  char buf[48];
+  char buf[160];
   int bufsize = sizeof(buf);
   int n = 0;
   if (echo) n += snprintf(buf + n, bufsize - n, "%s\r", cmd);
@@ -1318,6 +1349,40 @@ void processBLE(int timeout)
         n += snprintf(buf + n, bufsize - n, "%d", value);
       } else {
         n += snprintf(buf + n, bufsize - n, "N/A");
+      }
+    }
+  } else if (!strncmp(cmd, "PIDS", 4)) {
+    // PIDS0C0D05 -> data bytes of each mode 01 reply in hex, comma separated, empty when not available
+    if (!state.check(STATE_OBD_READY)) {
+      n += snprintf(buf + n, bufsize - n, "N/A");
+    } else {
+      for (const char* p = cmd + 4; isxdigit(p[0]) && isxdigit(p[1]) && n < bufsize - 16; p += 2) {
+        char req[5] = {'0', '1', p[0], p[1], 0};
+        char reply[96];
+        if (p != cmd + 4) buf[n++] = ',';
+        if (obdRawRequest(req, reply, sizeof(reply), OBD_TIMEOUT_SHORT) > 0) {
+          char tag[5] = {'4', '1', (char)toupper(p[0]), (char)toupper(p[1]), 0};
+          char* d = strstr(reply, tag);
+          if (d) {
+            for (d += 4; isxdigit(*d) && n < bufsize - 16; d++) buf[n++] = *d;
+          }
+        }
+        buf[n] = 0;
+      }
+    }
+  } else if (!strncmp(cmd, "RAW", 3)) {
+    // RAW0101, RAW03, RAW020C00 ... -> compacted reply of an arbitrary OBD-II request (no AT commands)
+    if (!state.check(STATE_OBD_READY)) {
+      n += snprintf(buf + n, bufsize - n, "N/A");
+    } else {
+      bool slow = cmd[3] == '0' && (cmd[4] == '3' || cmd[4] == '4' || cmd[4] == '7');
+      int len = obdRawRequest(cmd + 3, buf + n, bufsize - n, slow ? OBD_TIMEOUT_LONG : OBD_TIMEOUT_SHORT);
+      if (len < 0) {
+        n += snprintf(buf + n, bufsize - n, "ERROR");
+      } else if (len == 0) {
+        n += snprintf(buf + n, bufsize - n, "NO DATA");
+      } else {
+        n += len;
       }
     }
   } else if (!strcmp(cmd, "VIN")) {
