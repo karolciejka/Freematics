@@ -633,6 +633,13 @@ bool waitMotion(long timeout)
       serverProcess(100);
 #endif
       processBLE(100);
+#if ENABLE_BLE
+      // a phone app connecting wakes the device so it can read the car while parked
+      if (state.check(STATE_STANDBY) && ble_connected()) {
+        Serial.println("[BLE] Wake up");
+        return true;
+      }
+#endif
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         //lastMotionTime = millis();
@@ -756,6 +763,13 @@ void process()
       break;
     }
   }
+#if ENABLE_BLE
+  // stay awake while a phone app is connected, however long the car is parked
+  if (stationary && ble_connected()) {
+    stationary = false;
+    lastMotionTime = millis();
+  }
+#endif
   if (stationary) {
     // stationery timeout
     Serial.print("Stationary for ");
@@ -1108,11 +1122,17 @@ void standby()
   Serial.println("WAKEUP");
   sys.resetLink();
 #if RESET_AFTER_WAKEUP
-#if ENABLE_MEMS
-  if (mems) mems->end();  
+#if ENABLE_BLE
+  // restarting would drop the app that woke us up; re-initialize in place instead
+  if (!ble_connected())
 #endif
-  ESP.restart();
-#endif  
+  {
+#if ENABLE_MEMS
+    if (mems) mems->end();
+#endif
+    ESP.restart();
+  }
+#endif
   state.clear(STATE_STANDBY);
 }
 

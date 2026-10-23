@@ -225,6 +225,11 @@ void ble_send_response(void* data, int len, char* ptr_to_free)
     }
 }
 
+bool ble_connected(void)
+{
+    return is_connected;
+}
+
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     esp_err_t err;
