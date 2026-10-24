@@ -1,0 +1,80 @@
+name: Telelogger firmware
+
+on:
+  push:
+    branches: [master, obd-live-ble]
+    paths:
+      - firmware_v5/telelogger/**
+      - libraries/**
+      - .github/workflows/telelogger.yml
+  pull_request:
+    branches: [master]
+    paths:
+      - firmware_v5/telelogger/**
+      - libraries/**
+      - .github/workflows/telelogger.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build telelogger (PlatformIO)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware_v5/telelogger/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build
+        working-directory: firmware_v5/telelogger
+        run: |
+          set -o pipefail
+          pio run -e esp32dev 2>&1 | tee build.log || {
+            # surface compiler errors as an annotation so they're readable on the run page
+            err=$(grep -E "error:|Error |undefined reference|\*\*\*" build.log | sort -u | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Firmware build failed::$err"
+            exit 1
+          }
+          warn=$(grep -E "telelogger\.ino.*warning:|ble_spp_server\.c.*warning:" build.log | sort -u | head -30 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          [ -n "$warn" ] && echo "::warning title=Compiler warnings in changed files::$warn"
+          grep -E "^(RAM|Flash):" build.log | sed 's/^/::notice title=Size::/' || true
+
+      - name: Collect firmware
+        run: |
+          out=firmware_v5/telelogger/.pio/build/esp32dev
+          mkdir -p dist
+          cp "$out/firmware.bin" "$out/bootloader.bin" "$out/partitions.bin" dist/
+          sha=$(git rev-parse --short HEAD)
+          cat > dist/FLASHING.txt <<TXT
+          Freematics ONE+ telelogger, ${GITHUB_REF_NAME} @ ${sha}
+
+          Built from source; flash firmware.bin at 0x10000 for an update over an existing
+          telelogger install, or all three files for a clean install:
+            esptool.py --chip esp32 --baud 921600 write_flash \\
+              0x1000 bootloader.bin 0x8000 partitions.bin 0x10000 firmware.bin
+          (PlatformIO "Upload" from firmware_v5/telelogger does the same.)
+          TXT
+          ls -l dist
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: telelogger-${{ github.ref_name == 'master' && 'master' || 'branch' }}-${{ github.sha }}
+          path: dist/
+          retention-days: ${{ github.ref_name == 'master' && 90 || 30 }}
