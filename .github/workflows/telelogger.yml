@@ -47,7 +47,7 @@ jobs:
           set -o pipefail
           pio run -e esp32dev 2>&1 | tee build.log || {
             # surface compiler errors as an annotation so they're readable on the run page
-            err=$(grep -E "error:|Error |undefined reference|\*\*\*" build.log | sort -u | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            err=$( (grep -E "error:|Error |undefined reference|\*\*\*" build.log | sort -u | head -40; echo "--- last lines ---"; tail -25 build.log) | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=Firmware build failed::$err"
             exit 1
           }
