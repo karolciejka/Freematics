@@ -51,8 +51,8 @@ jobs:
             echo "::error title=Firmware build failed::$err"
             exit 1
           }
-          warn=$(grep -E "telelogger\.ino.*warning:|ble_spp_server\.c.*warning:" build.log | sort -u | head -30 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-          [ -n "$warn" ] && echo "::warning title=Compiler warnings in changed files::$warn"
+          warn=$(grep -E "telelogger\.ino.*warning:|ble_spp_server\.c.*warning:" build.log | sort -u | head -30 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}' || true)
+          if [ -n "$warn" ]; then echo "::warning title=Compiler warnings in changed files::$warn"; fi
           grep -E "^(RAM|Flash):" build.log | sed 's/^/::notice title=Size::/' || true
 
       - name: Collect firmware
