@@ -605,12 +605,41 @@ void showStats()
 #endif
 }
 
+#if ENABLE_OBD
+// battery voltage, read the same way as for data logging
+float readBatteryVoltage()
+{
+  if (sys.devType > 12) return (float)(analogRead(A0) * 45) / 4095;
+  return obd.getVoltage();
+}
+#endif
+
 bool waitMotion(long timeout)
 {
 #if ENABLE_MEMS
   unsigned long t = millis();
   if (state.check(STATE_MEMS_READY)) {
+#if ENABLE_OBD
+    // engine start: wake when the battery voltage rises to JUMPSTART_VOLTAGE, having been below it
+    // (going to standby with the engine idling must not wake the device straight away)
+    bool voltageArmed = false;
+    unsigned long lastVoltageCheck = 0;
+#endif
     do {
+#if ENABLE_OBD
+      if (millis() - lastVoltageCheck >= 5000) {
+        lastVoltageCheck = millis();
+        float v = readBatteryVoltage();
+        if (v > 0 && v < JUMPSTART_VOLTAGE) {
+          voltageArmed = true;
+        } else if (voltageArmed && v >= JUMPSTART_VOLTAGE) {
+          Serial.print("[POWER] Engine start ");
+          Serial.print(v);
+          Serial.println("V");
+          return true;
+        }
+      }
+#endif
       // calculate relative movement
       float motion = 0;
       float acc[3];

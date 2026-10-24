@@ -163,8 +163,8 @@
 **************************************/
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.4f /* vehicle motion threshold in G */
-// engine jumpstart voltage for waking up (when MEMS unavailable) 
-#define JUMPSTART_VOLTAGE 14 /* V */
+// battery voltage that means the engine is running (alternator charging); rising to it wakes the device
+#define JUMPSTART_VOLTAGE 13.7f /* V */
 // reset device after waking up
 #define RESET_AFTER_WAKEUP 1
 
