@@ -696,6 +696,12 @@ void process()
 
 #if ENABLE_OBD
   // process OBD data if connected
+#if ENABLE_BLE
+  // a connected app polls the car itself (PIDS/RAW); polling here as well would halve its rate
+  if (state.check(STATE_OBD_READY) && ble_connected()) {
+    // OBD data is not logged while the app is connected
+  } else
+#endif
   if (state.check(STATE_OBD_READY)) {
     processOBD(buffer);
     if (obd.errors >= MAX_OBD_ERRORS) {
